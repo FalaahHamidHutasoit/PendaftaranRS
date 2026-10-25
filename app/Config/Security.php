@@ -4,83 +4,29 @@ namespace Config;
 
 use CodeIgniter\Config\BaseConfig;
 
+/**
+ * Konfigurasi keamanan (CSRF) aplikasi ini.
+ *
+ * Nilai-nilai di bawah sama dengan bawaan skeleton CI4 4.6, KECUALI
+ * $redirect yang sengaja dibuat true di semua environment.
+ *
+ * Alasannya (temuan uji runtime v2): bawaan skeleton memakai
+ * $redirect = (ENVIRONMENT === 'production'), sehingga pada mode
+ * development kegagalan CSRF melempar SecurityException ke penampil
+ * error debug framework — dan penampil itu sendiri crash
+ * ("Undefined array key args" di BaseExceptionHandler) sehingga
+ * pengguna melihat 500, bukan 403. Dengan $redirect = true, kegagalan
+ * CSRF selalu dialihkan kembali dengan pesan error, di development
+ * maupun production, dan aksi tetap TIDAK dieksekusi.
+ */
 class Security extends BaseConfig
 {
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Protection Method
-     * --------------------------------------------------------------------------
-     *
-     * Protection Method for Cross Site Request Forgery protection.
-     *
-     * @var string 'cookie' or 'session'
-     */
     public string $csrfProtection = 'cookie';
-
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Token Randomization
-     * --------------------------------------------------------------------------
-     *
-     * Randomize the CSRF Token for added security.
-     */
-    public bool $tokenRandomize = false;
-
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Token Name
-     * --------------------------------------------------------------------------
-     *
-     * Token name for Cross Site Request Forgery protection.
-     */
-    public string $tokenName = 'csrf_test_name';
-
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Header Name
-     * --------------------------------------------------------------------------
-     *
-     * Header name for Cross Site Request Forgery protection.
-     */
-    public string $headerName = 'X-CSRF-TOKEN';
-
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Cookie Name
-     * --------------------------------------------------------------------------
-     *
-     * Cookie name for Cross Site Request Forgery protection.
-     */
-    public string $cookieName = 'csrf_cookie_name';
-
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Expires
-     * --------------------------------------------------------------------------
-     *
-     * Expiration time for Cross Site Request Forgery protection cookie.
-     *
-     * Defaults to two hours (in seconds).
-     */
-    public int $expires = 7200;
-
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Regenerate
-     * --------------------------------------------------------------------------
-     *
-     * Regenerate CSRF Token on every submission.
-     */
-    public bool $regenerate = true;
-
-    /**
-     * --------------------------------------------------------------------------
-     * CSRF Redirect
-     * --------------------------------------------------------------------------
-     *
-     * Redirect to previous page with error on failure.
-     *
-     * @see https://codeigniter4.github.io/userguide/libraries/security.html#redirection-on-failure
-     */
-    public bool $redirect = (ENVIRONMENT === 'production');
+    public bool $tokenRandomize   = false;
+    public string $tokenName      = 'csrf_test_name';
+    public string $headerName     = 'X-CSRF-TOKEN';
+    public string $cookieName     = 'csrf_cookie_name';
+    public int $expires           = 7200;
+    public bool $regenerate       = true;
+    public bool $redirect         = true;
 }

@@ -10,30 +10,31 @@ class AuthFilter implements FilterInterface
 {
     public function before(RequestInterface $request, $arguments = null)
     {
-        if (!session()->get('isLoggedIn')) {
-            return redirect()->to(base_url('login'))
-                ->with('pesan_error', 'Silakan login terlebih dahulu.');
+        $session = session();
+        if (! $session->get('isLoggedIn')) {
+            return redirect()->to('/login')->with('error', 'Silakan login terlebih dahulu.');
         }
-
-        // Jika route meminta role tertentu,
-        // pastikan role pengguna sesuai.
-        if ($arguments !== null && !in_array(
-            session()->get('role'),
-            $arguments,
-            true
-        )) {
-            $beranda = session()->get('role') === 'admin' ? 'dashboard' : 'reservasi';
-
-            return redirect()->to(base_url($beranda))
-                ->with('pesan_error', 'Kamu tidak memiliki akses ke halaman ini.');
+        if (! empty($arguments)) {
+            $role = (string) $session->get('role');
+            if (! in_array($role, $arguments, true)) {
+                return redirect()->to($this->dashboardFor($role))
+                    ->with('error', 'Anda tidak memiliki akses ke halaman tersebut.');
+            }
         }
+        return null;
     }
 
-    public function after(
-        RequestInterface $request,
-        ResponseInterface $response,
-        $arguments = null
-    ) {
-        // Tidak ada proses setelah response.
+    public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
+    {
+        return null;
+    }
+
+    private function dashboardFor(string $role): string
+    {
+        return match ($role) {
+            'admin'  => '/admin',
+            'dokter' => '/dokter',
+            default  => '/jadwal',
+        };
     }
 }

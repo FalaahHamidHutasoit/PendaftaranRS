@@ -8,12 +8,9 @@ class JadwalDokterModel extends Model
 {
     protected $table            = 'jadwal_dokter';
     protected $primaryKey       = 'id_jadwal';
-    protected $allowedFields    = [
-        'id_dokter',
-        'tanggal',
-        'jam_mulai',
-        'jam_selesai',
-        'kuota'
-    ];
+    protected $useAutoIncrement = true;
+    protected $returnType       = 'array';
+    protected $useSoftDeletes   = false;
+    protected $allowedFields    = ['id_dokter', 'tanggal', 'jam_mulai', 'jam_selesai', 'kuota'];
     protected $useTimestamps    = false;
 }

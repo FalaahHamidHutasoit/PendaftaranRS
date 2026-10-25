@@ -2,73 +2,57 @@
 
 namespace App\Controllers;
 
+use App\Models\UserModel;
+
 class Auth extends BaseController
 {
     public function login()
     {
-        // Jika sudah login, arahkan ke dashboard
         if (session()->get('isLoggedIn')) {
-            return redirect()->to(base_url($this->berandaPeran()));
+            return redirect()->to($this->dashboardFor((string) session()->get('role')));
         }
-
         return view('auth/login');
     }
 
-    public function prosesLogin()
+    public function attempt()
     {
-        $aturan = [
-            'email' => 'required|valid_email',
+        $rules = [
+            'email'    => 'required|valid_email',
             'password' => 'required',
         ];
-
-        if (!$this->validate($aturan)) {
-            return redirect()->back()
-                ->withInput()
-                ->with('pesan_error', 'Email atau password wajib diisi dengan benar.');
+        if (! $this->validate($rules)) {
+            return redirect()->back()->withInput()
+                ->with('error', 'Email dan kata sandi wajib diisi dengan benar.');
         }
-
-        $email = strtolower(trim($this->request->getPost('email')));
-        $password = $this->request->getPost('password');
-
-        $db = \Config\Database::connect();
-
-        $user = $db->table('users')
-            ->where('email', $email)
-            ->get()
-            ->getRowArray();
-
-        // Periksa akun dan password
-        if (!$user || !password_verify($password, $user['password'])) {
-            return redirect()->back()
-                ->withInput()
-                ->with('pesan_error', 'Email atau password salah.');
+        $user = (new UserModel())->where('email', $this->request->getPost('email'))->first();
+        if (! $user || ! password_verify((string) $this->request->getPost('password'), (string) $user['password'])) {
+            return redirect()->back()->withInput()
+                ->with('error', 'Email atau kata sandi salah.');
         }
-
-        // Regenerasi session ID setelah login
         session()->regenerate();
-
-        // Simpan informasi login ke session
         session()->set([
-            'id_user' => $user['id_user'],
-            'nama' => $user['nama'],
-            'email' => $user['email'],
-            'role' => $user['role'],
+            'id_user'    => $user['id_user'],
+            'nama'       => $user['nama'],
+            'email'      => $user['email'],
+            'role'       => $user['role'],
             'isLoggedIn' => true,
         ]);
-
-        return redirect()->to(base_url($this->berandaPeran()));
-    }
-
-    private function berandaPeran(): string
-    {
-        return session()->get('role') === 'admin' ? 'dashboard' : 'reservasi';
+        return redirect()->to($this->dashboardFor((string) $user['role']))
+            ->with('success', 'Selamat datang, ' . $user['nama'] . '.');
     }
 
     public function logout()
     {
         session()->destroy();
+        return redirect()->to('/login')->with('success', 'Anda sudah keluar.');
+    }
 
-        return redirect()->to(base_url('login'))
-            ->with('pesan_sukses', 'Kamu berhasil logout.');
+    private function dashboardFor(string $role): string
+    {
+        return match ($role) {
+            'admin'  => '/admin',
+            'dokter' => '/dokter',
+            default  => '/jadwal',
+        };
     }
 }

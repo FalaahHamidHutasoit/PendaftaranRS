@@ -2,117 +2,223 @@
 
 namespace App\Controllers;
 
+use App\Models\JadwalDokterModel;
+use App\Models\PasienModel;
+use App\Models\PendaftaranModel;
+use Config\Database;
+
 class Pendaftaran extends BaseController
 {
-    public function index()
+    private function pasienLogin(): ?array
     {
-        return view('pendaftaran/index');
+        return (new PasienModel())->where('id_user', session()->get('id_user'))->first();
     }
 
-    
-public function simpan()
-{
-    $aturan = [
-        'nama'          => 'required|min_length[3]|max_length[100]',
-        'email'         => 'required|valid_email|max_length[100]',
-        'password'      => 'required|min_length[8]',
-        'nik'           => 'required|exact_length[16]|numeric',
-        'tanggal_lahir' => 'required|valid_date[Y-m-d]',
-        'jenis_kelamin' => 'required|in_list[L,P]',
-        'alamat'        => 'required|max_length[255]',
-        'jenis_pasien'  => 'required|in_list[umum,bpjs]',
-        'no_bpjs'       => 'permit_empty|exact_length[13]|numeric',
-        'no_hp'         => 'required|numeric|min_length[9]|max_length[15]',
-        'golongan_darah' => 'required|in_list[A+,A-,B+,B-,AB+,AB-,O+,O-,tidak_tahu]',
-        'alergi'        => 'permit_empty|max_length[255]',
-    ];
-
-    if (!$this->validate($aturan)) {
-        return redirect()->back()
-            ->withInput()
-            ->with('errors', $this->validator->getErrors());
-    }
-
-    $db = \Config\Database::connect();
-
-    $email = strtolower(trim($this->request->getPost('email')));
-    $nik = trim($this->request->getPost('nik'));
-    $jenisPasien = $this->request->getPost('jenis_pasien');
-    $noBpjs = trim((string) $this->request->getPost('no_bpjs'));
-
-    // Periksa email dan NIK agar tidak duplikat.
-    if ($db->table('users')->where('email', $email)->countAllResults() > 0) {
-        return redirect()->back()->withInput()
-            ->with('pesan_error', 'Email sudah terdaftar.');
-    }
-
-    if ($db->table('pasien')->where('nik', $nik)->countAllResults() > 0) {
-        return redirect()->back()->withInput()
-            ->with('pesan_error', 'NIK sudah terdaftar.');
-    }
-
-    if ($jenisPasien === 'bpjs' && $noBpjs === '') {
-        return redirect()->back()->withInput()
-            ->with('pesan_error', 'Nomor BPJS wajib diisi (13 digit) untuk pasien BPJS.');
-    }
-    if ($jenisPasien === 'bpjs' && $db->table('pasien')->where('no_bpjs', $noBpjs)->countAllResults() > 0) {
-        return redirect()->back()->withInput()
-            ->with('pesan_error', 'Nomor BPJS sudah terdaftar.');
-    }
-
-    $db->transBegin();
-
-    try {
-        $db->table('users')->insert([
-            'nama'     => trim($this->request->getPost('nama')),
-            'email'    => $email,
-            'password' => password_hash(
-                $this->request->getPost('password'),
-                PASSWORD_DEFAULT
-            ),
-            'role'     => 'pasien',
-        ]);
-
-        $idUser = $db->insertID();
-
-        // Nomor rekam medis sementara berdasarkan ID pasien.
-        $db->table('pasien')->insert([
-            'id_user'       => $idUser,
-            'no_rm'         => 'TMP' . bin2hex(random_bytes(8)),
-            'nik'           => $nik,
-            'tanggal_lahir' => $this->request->getPost('tanggal_lahir'),
-            'jenis_kelamin' => $this->request->getPost('jenis_kelamin'),
-            'alamat'        => trim($this->request->getPost('alamat')),
-            'jenis_pasien'  => $jenisPasien,
-            'no_bpjs'       => $jenisPasien === 'bpjs' ? $noBpjs : null,
-            'status_bpjs'   => $jenisPasien === 'bpjs' ? 'menunggu' : 'tidak_berlaku',
-            'no_hp'         => trim($this->request->getPost('no_hp')),
-            'golongan_darah' => $this->request->getPost('golongan_darah'),
-            'alergi'        => trim((string) $this->request->getPost('alergi')) ?: null,
-        ]);
-
-        // Nomor RM dibentuk dari id_pasien (unik per pasien), bukan id_user.
-        $idPasien = $db->insertID();
-        $noRm     = 'RM' . date('Ymd') . str_pad((string) $idPasien, 4, '0', STR_PAD_LEFT);
-        $db->table('pasien')->where('id_pasien', $idPasien)->update(['no_rm' => $noRm]);
-
-        if ($db->transStatus() === false) {
-            throw new \RuntimeException('Penyimpanan data gagal.');
+    public function riwayat()
+    {
+        $pasien = $this->pasienLogin();
+        if (! $pasien) {
+            return redirect()->to('/jadwal')->with('error', 'Profil pasien tidak ditemukan.');
         }
-
-        $db->transCommit();
-
-        return redirect()->to(base_url('login'))
-            ->with('pesan_sukses', 'Pendaftaran berhasil. Nomor rekam medis kamu: ' . $noRm . '. Silakan login.');
-
-    } catch (\Throwable $e) {
-        $db->transRollback();
-
-        log_message('error', 'Pendaftaran pasien gagal: ' . $e->getMessage());
-
-        return redirect()->back()->withInput()
-            ->with('pesan_error', 'Pendaftaran gagal diproses. Periksa data dan coba kembali.');
+        $db = Database::connect();
+        $rows = $db->table('pendaftaran pd')
+            ->select('pd.*, j.tanggal, j.jam_mulai, j.jam_selesai, d.nama_dokter, p.nama_poli')
+            ->join('jadwal_dokter j', 'j.id_jadwal = pd.id_jadwal')
+            ->join('dokter d', 'd.id_dokter = j.id_dokter')
+            ->join('poli p', 'p.id_poli = d.id_poli')
+            ->where('pd.id_pasien', $pasien['id_pasien'])
+            ->orderBy('pd.tanggal_daftar', 'DESC')
+            ->get()->getResultArray();
+        // Pengingat H-1 (FR-P07): berdasarkan TANGGAL JADWAL besok, bukan
+        // tanggal daftar. Hanya pendaftaran aktif (menunggu/dikonfirmasi).
+        $besok = $db->table('pendaftaran pd')
+            ->select('pd.no_antrean, j.tanggal, j.jam_mulai, d.nama_dokter, p.nama_poli')
+            ->join('jadwal_dokter j', 'j.id_jadwal = pd.id_jadwal')
+            ->join('dokter d', 'd.id_dokter = j.id_dokter')
+            ->join('poli p', 'p.id_poli = d.id_poli')
+            ->where('pd.id_pasien', $pasien['id_pasien'])
+            ->where('j.tanggal', date('Y-m-d', strtotime('+1 day')))
+            ->whereIn('pd.status', ['menunggu', 'dikonfirmasi'])
+            ->orderBy('j.jam_mulai', 'ASC')
+            ->get()->getResultArray();
+        return view('pendaftaran/riwayat', ['pendaftaran' => $rows, 'pasien' => $pasien, 'pengingat_besok' => $besok]);
     }
-}
 
+    public function buat(int $idJadwal)
+    {
+        $pasien = $this->pasienLogin();
+        if (! $pasien) {
+            return redirect()->to('/jadwal')->with('error', 'Profil pasien tidak ditemukan.');
+        }
+        if ($pasien['jenis_pasien'] === 'bpjs' && $pasien['status_bpjs'] === 'ditolak') {
+            return redirect()->to('/jadwal')
+                ->with('error', 'Pendaftaran diblokir karena status BPJS ditolak. Hubungi admisi.');
+        }
+        $jadwal = (new JadwalDokterModel())->find($idJadwal);
+        if (! $jadwal || $jadwal['tanggal'] < date('Y-m-d')) {
+            return redirect()->to('/jadwal')->with('error', 'Jadwal tidak ditemukan atau sudah lewat.');
+        }
+        $terisi = (new PendaftaranModel())
+            ->where('id_jadwal', $idJadwal)
+            ->where('status !=', 'dibatalkan')
+            ->countAllResults();
+        $sisa = max(0, (int) $jadwal['kuota'] - (int) $terisi);
+        return view('pendaftaran/form', ['jadwal' => $jadwal, 'pasien' => $pasien, 'sisa_kuota' => $sisa]);
+    }
+
+    public function simpan()
+    {
+        $pasien = $this->pasienLogin();
+        if (! $pasien) {
+            return redirect()->to('/jadwal')->with('error', 'Profil pasien tidak ditemukan.');
+        }
+        $input = [
+            'id_jadwal'       => (int) $this->request->getPost('id_jadwal'),
+            'jenis_kunjungan' => (string) $this->request->getPost('jenis_kunjungan'),
+            'keluhan_awal'    => (string) $this->request->getPost('keluhan_awal'),
+            'no_rujukan'      => $this->request->getPost('no_rujukan'),
+            'faskes_perujuk'  => $this->request->getPost('faskes_perujuk'),
+        ];
+        $hasil = $this->prosesSimpan($input, (int) $pasien['id_pasien'], $pasien);
+        if (! $hasil['ok']) {
+            return redirect()->back()->withInput()->with('error', $hasil['error']);
+        }
+        return redirect()->to('/pendaftaran')
+            ->with('success', 'Pendaftaran berhasil. Nomor antrean Anda: ' . $hasil['no_antrean'] . '.');
+    }
+
+    public function apiSimpan()
+    {
+        $pasien = $this->pasienLogin();
+        if (! $pasien) {
+            return $this->response->setJSON(['ok' => false, 'error' => 'Login pasien diperlukan.'])->setStatusCode(401);
+        }
+        $json = $this->request->getJSON(true);
+        if (! is_array($json)) {
+            $json = [];
+        }
+        $input = [
+            'id_jadwal'       => (int) ($json['id_jadwal'] ?? $this->request->getPost('id_jadwal')),
+            'jenis_kunjungan' => (string) ($json['jenis_kunjungan'] ?? $this->request->getPost('jenis_kunjungan')),
+            'keluhan_awal'    => (string) ($json['keluhan_awal'] ?? $this->request->getPost('keluhan_awal')),
+            'no_rujukan'      => $json['no_rujukan'] ?? $this->request->getPost('no_rujukan'),
+            'faskes_perujuk'  => $json['faskes_perujuk'] ?? $this->request->getPost('faskes_perujuk'),
+        ];
+        $hasil = $this->prosesSimpan($input, (int) $pasien['id_pasien'], $pasien);
+        if (! $hasil['ok']) {
+            return $this->response->setJSON(['ok' => false, 'error' => $hasil['error']])
+                ->setStatusCode($hasil['code'] ?? 422);
+        }
+        return $this->response->setJSON([
+            'ok'              => true,
+            'id_pendaftaran'  => $hasil['id_pendaftaran'],
+            'no_antrean'      => $hasil['no_antrean'],
+            'status'          => 'menunggu',
+        ])->setStatusCode(201);
+    }
+
+    public function batal(int $idPendaftaran)
+    {
+        $pasien = $this->pasienLogin();
+        if (! $pasien) {
+            return redirect()->to('/jadwal')->with('error', 'Profil pasien tidak ditemukan.');
+        }
+        $model = new PendaftaranModel();
+        $row = $model->find($idPendaftaran);
+        if (! $row || (int) $row['id_pasien'] !== (int) $pasien['id_pasien']) {
+            return redirect()->to('/pendaftaran')->with('error', 'Pendaftaran tidak ditemukan.');
+        }
+        if (! in_array($row['status'], ['menunggu', 'dikonfirmasi'], true)) {
+            return redirect()->to('/pendaftaran')->with('error', 'Hanya pendaftaran menunggu/dikonfirmasi yang dapat dibatalkan.');
+        }
+        $jadwal = (new JadwalDokterModel())->find((int) $row['id_jadwal']);
+        if ($jadwal && $jadwal['tanggal'] <= date('Y-m-d')) {
+            return redirect()->to('/pendaftaran')
+                ->with('error', 'Pembatalan hanya dapat dilakukan sebelum hari praktik.');
+        }
+        $model->update($idPendaftaran, ['status' => 'dibatalkan']);
+        return redirect()->to('/pendaftaran')->with('success', 'Pendaftaran berhasil dibatalkan. Kuota kembali tersedia.');
+    }
+
+    /**
+     * Logika inti pendaftaran, dipakai bersama oleh form web dan endpoint API.
+     * Aturan: kuota dihitung tanpa status dibatalkan, jadwal dikunci dalam
+     * transaksi, booking aktif ganda ditolak, nomor antrean = MAX + 1 per jadwal.
+     */
+    private function prosesSimpan(array $input, int $idPasien, array $pasien): array
+    {
+        $gagal = static fn (string $msg, int $code = 422) => ['ok' => false, 'error' => $msg, 'code' => $code];
+        if (empty($input['id_jadwal']) || ! in_array($input['jenis_kunjungan'] ?? '', ['baru', 'kontrol'], true)) {
+            return $gagal('Jadwal dan jenis kunjungan wajib diisi dengan benar.');
+        }
+        if (trim((string) ($input['keluhan_awal'] ?? '')) === '') {
+            return $gagal('Keluhan awal wajib diisi.');
+        }
+        if ($pasien['jenis_pasien'] === 'bpjs' && $pasien['status_bpjs'] === 'ditolak') {
+            return $gagal('Pendaftaran diblokir karena status BPJS ditolak.', 403);
+        }
+        if ($pasien['jenis_pasien'] === 'bpjs' && $input['jenis_kunjungan'] === 'baru') {
+            if (trim((string) ($input['no_rujukan'] ?? '')) === '' || trim((string) ($input['faskes_perujuk'] ?? '')) === '') {
+                return $gagal('Pasien BPJS baru wajib mengisi nomor rujukan dan faskes perujuk.');
+            }
+        }
+        $db = Database::connect();
+        $db->transBegin();
+        try {
+            $jadwal = $db->query(
+                'SELECT * FROM jadwal_dokter WHERE id_jadwal = ? FOR UPDATE',
+                [(int) $input['id_jadwal']]
+            )->getRowArray();
+            if (! $jadwal) {
+                throw new \RuntimeException('Jadwal tidak ditemukan.');
+            }
+            if ($jadwal['tanggal'] < date('Y-m-d')) {
+                throw new \RuntimeException('Jadwal sudah lewat.');
+            }
+            $aktif = $db->table('pendaftaran')
+                ->where('id_pasien', $idPasien)
+                ->where('id_jadwal', (int) $input['id_jadwal'])
+                ->whereIn('status', ['menunggu', 'dikonfirmasi'])
+                ->countAllResults();
+            if ($aktif > 0) {
+                throw new \RuntimeException('Anda sudah memiliki booking aktif pada jadwal ini.', 409);
+            }
+            $terisi = $db->table('pendaftaran')
+                ->where('id_jadwal', (int) $input['id_jadwal'])
+                ->where('status !=', 'dibatalkan')
+                ->countAllResults();
+            if ($terisi >= (int) $jadwal['kuota']) {
+                throw new \RuntimeException('Kuota jadwal sudah habis.', 409);
+            }
+            $maxAntrean = $db->table('pendaftaran')
+                ->selectMax('no_antrean', 'maks')
+                ->where('id_jadwal', (int) $input['id_jadwal'])
+                ->get()->getRowArray();
+            $noAntrean = ((int) ($maxAntrean['maks'] ?? 0)) + 1;
+            $model = new PendaftaranModel();
+            $model->insert([
+                'id_pasien'       => $idPasien,
+                'id_jadwal'       => (int) $input['id_jadwal'],
+                'jenis_kunjungan' => $input['jenis_kunjungan'],
+                'no_antrean'      => $noAntrean,
+                'no_rujukan'      => $input['no_rujukan'] ?: null,
+                'faskes_perujuk'  => $input['faskes_perujuk'] ?: null,
+                'keluhan_awal'    => $input['keluhan_awal'],
+                'status'          => 'menunggu',
+            ]);
+            $idPendaftaran = (int) $model->getInsertID();
+            $db->transCommit();
+            return ['ok' => true, 'id_pendaftaran' => $idPendaftaran, 'no_antrean' => $noAntrean];
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'Simpan pendaftaran gagal: ' . $e->getMessage());
+            $code = $e->getCode() === 409 ? 409 : 422;
+            $pesan = in_array($e->getMessage(), [
+                'Jadwal tidak ditemukan.', 'Jadwal sudah lewat.',
+                'Anda sudah memiliki booking aktif pada jadwal ini.',
+                'Kuota jadwal sudah habis.',
+            ], true) ? $e->getMessage() : 'Pendaftaran gagal disimpan. Silakan coba lagi.';
+            return $gagal($pesan, $code);
+        }
+    }
 }
