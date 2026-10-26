@@ -25,9 +25,9 @@ class DatabaseSeeder extends Seeder
         ]);
         $idDokterUser = (int) $this->db->insertID();
 
-        $this->db->table('poli')->insert(['nama_poli' => 'Poli Umum', 'deskripsi' => 'Layanan pemeriksaan umum.']);
+        $this->db->table('poli')->insert(['nama_poli' => 'Poli Umum', 'deskripsi' => 'Layanan pemeriksaan umum.', 'kode_antrean' => 'U']);
         $idPoliUmum = (int) $this->db->insertID();
-        $this->db->table('poli')->insert(['nama_poli' => 'Poli Gigi', 'deskripsi' => 'Layanan pemeriksaan gigi.']);
+        $this->db->table('poli')->insert(['nama_poli' => 'Poli Gigi', 'deskripsi' => 'Layanan pemeriksaan gigi.', 'kode_antrean' => 'G']);
 
         $this->db->table('pasien')->insert([
             'id_user' => $idPasienUser, 'no_rm' => 'RMDEMO0001', 'nik' => '1000000000000001',

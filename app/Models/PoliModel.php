@@ -11,6 +11,6 @@ class PoliModel extends Model
     protected $useAutoIncrement = true;
     protected $returnType       = 'array';
     protected $useSoftDeletes   = false;
-    protected $allowedFields    = ['nama_poli', 'deskripsi'];
+    protected $allowedFields    = ['nama_poli', 'deskripsi', 'kode_antrean'];
     protected $useTimestamps    = false;
 }

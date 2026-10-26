@@ -5,7 +5,11 @@ use CodeIgniter\Router\RouteCollection;
 /**
  * @var RouteCollection $routes
  */
-$routes->get('/', 'Jadwal::index');
+// v6: '/' adalah Beranda (Home). Daftar jadwal tetap di '/jadwal';
+// admin/dokter yang membuka Beranda di-redirect ke dashboard mereka
+// oleh Beranda::index.
+$routes->get('/', 'Beranda::index');
+$routes->get('beranda', 'Beranda::index');
 $routes->get('login', 'Auth::login');
 $routes->post('login', 'Auth::attempt');
 // v2: logout lewat POST (dengan CSRF) agar tidak bisa dipicu oleh
@@ -50,6 +54,9 @@ $routes->group('admin', ['filter' => 'auth:admin'], static function ($routes) {
     $routes->get('pasien', 'Admin::pasien');
     $routes->post('pasien/bpjs/(:num)', 'Admin::verifikasiBpjs/$1');
     $routes->get('pendaftaran', 'Admin::pendaftaran');
+    // v7: pindai/cari kode booking (ketik, scanner USB, atau kamera in-app).
+    $routes->get('pendaftaran/pindai', 'Admin::pindai');
+    $routes->post('pendaftaran/pindai-checkin/(:num)', 'Admin::pindaiCheckIn/$1');
     $routes->post('pendaftaran/status/(:num)', 'Admin::ubahStatusPendaftaran/$1');
     $routes->post('pendaftaran/checkin/(:num)', 'Admin::checkIn/$1');
     $routes->get('rekap', 'Admin::rekap');
@@ -63,7 +70,12 @@ $routes->group('dokter', ['filter' => 'auth:dokter'], static function ($routes) 
     $routes->get('rekam-medis', 'Dokter::rekamMedis');
     $routes->get('rekam-medis/lihat/(:num)', 'Dokter::rekamMedisLihat/$1');
     $routes->get('rekam-medis/buat/(:num)', 'Dokter::rekamMedisForm/$1');
+    // v7: pratinjau konfirmasi sebelum simpan + kembali ke form + koreksi beraudit.
+    $routes->post('rekam-medis/pratinjau', 'Dokter::rekamMedisPratinjau');
+    $routes->post('rekam-medis/kembali', 'Dokter::rekamMedisKembali');
     $routes->post('rekam-medis/simpan', 'Dokter::rekamMedisSimpan');
+    $routes->get('rekam-medis/ubah/(:num)', 'Dokter::rekamMedisUbahForm/$1');
+    $routes->post('rekam-medis/ubah/(:num)', 'Dokter::rekamMedisUbahSimpan/$1');
 });
 
 // Endpoint API (autentikasi sesi, untuk keperluan UTS).

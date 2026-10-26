@@ -25,6 +25,12 @@ class Jadwal extends BaseController
             $row['sisa_kuota'] = max(0, (int) $row['kuota'] - (int) $row['terisi']);
         }
         unset($row);
+        // v6: kartu hero antrean TIDAK lagi di halaman jadwal. Query
+        // antrean aktif yang sama pindah ke Beranda::index — Home
+        // adalah satu-satunya tempat kartu besar itu tampil, dan
+        // hanya selama statusnya masih aktif (menunggu/dikonfirmasi).
+        // Halaman ini murni daftar jadwal; daftar lengkapnya tetap
+        // ada di halaman Antrean Saya (/pendaftaran).
         return view('jadwal/index', ['jadwal' => $rows]);
     }
 

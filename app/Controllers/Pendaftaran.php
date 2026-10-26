@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\KodeAntrean;
 use App\Models\JadwalDokterModel;
 use App\Models\PasienModel;
 use App\Models\PendaftaranModel;
@@ -22,17 +23,21 @@ class Pendaftaran extends BaseController
         }
         $db = Database::connect();
         $rows = $db->table('pendaftaran pd')
-            ->select('pd.*, j.tanggal, j.jam_mulai, j.jam_selesai, d.nama_dokter, p.nama_poli')
+            ->select('pd.*, j.tanggal, j.jam_mulai, j.jam_selesai, d.nama_dokter, p.nama_poli, p.kode_antrean AS kode_antrean_poli')
             ->join('jadwal_dokter j', 'j.id_jadwal = pd.id_jadwal')
             ->join('dokter d', 'd.id_dokter = j.id_dokter')
             ->join('poli p', 'p.id_poli = d.id_poli')
             ->where('pd.id_pasien', $pasien['id_pasien'])
             ->orderBy('pd.tanggal_daftar', 'DESC')
             ->get()->getResultArray();
+        // v7: baris lama tanpa kode tidak boleh crash — lengkapi kode
+        // antrean (turunan) dan kode booking (disimpan saat pertama kali
+        // ditampilkan) sebelum dirender.
+        $rows = KodeAntrean::pastikanDaftar($rows);
         // Pengingat H-1 (FR-P07): berdasarkan TANGGAL JADWAL besok, bukan
         // tanggal daftar. Hanya pendaftaran aktif (menunggu/dikonfirmasi).
         $besok = $db->table('pendaftaran pd')
-            ->select('pd.no_antrean, j.tanggal, j.jam_mulai, d.nama_dokter, p.nama_poli')
+            ->select('pd.id_pendaftaran, pd.no_antrean, pd.kode_antrean, pd.kode_booking, j.tanggal, j.jam_mulai, d.nama_dokter, p.nama_poli, p.kode_antrean AS kode_antrean_poli')
             ->join('jadwal_dokter j', 'j.id_jadwal = pd.id_jadwal')
             ->join('dokter d', 'd.id_dokter = j.id_dokter')
             ->join('poli p', 'p.id_poli = d.id_poli')
@@ -41,6 +46,7 @@ class Pendaftaran extends BaseController
             ->whereIn('pd.status', ['menunggu', 'dikonfirmasi'])
             ->orderBy('j.jam_mulai', 'ASC')
             ->get()->getResultArray();
+        $besok = KodeAntrean::pastikanDaftar($besok);
         return view('pendaftaran/riwayat', ['pendaftaran' => $rows, 'pasien' => $pasien, 'pengingat_besok' => $besok]);
     }
 
@@ -84,7 +90,7 @@ class Pendaftaran extends BaseController
             return redirect()->back()->withInput()->with('error', $hasil['error']);
         }
         return redirect()->to('/pendaftaran')
-            ->with('success', 'Pendaftaran berhasil. Nomor antrean Anda: ' . $hasil['no_antrean'] . '.');
+            ->with('success', 'Pendaftaran berhasil. Kode antrean Anda: ' . $hasil['kode_antrean'] . '. Kode booking Anda: ' . $hasil['kode_booking'] . ' — tunjukkan kode ini (atau QR-nya di Beranda) saat check-in.');
     }
 
     public function apiSimpan()
@@ -113,6 +119,8 @@ class Pendaftaran extends BaseController
             'ok'              => true,
             'id_pendaftaran'  => $hasil['id_pendaftaran'],
             'no_antrean'      => $hasil['no_antrean'],
+            'kode_antrean'    => $hasil['kode_antrean'],
+            'kode_booking'    => $hasil['kode_booking'],
             'status'          => 'menunggu',
         ])->setStatusCode(201);
     }
@@ -195,12 +203,26 @@ class Pendaftaran extends BaseController
                 ->where('id_jadwal', (int) $input['id_jadwal'])
                 ->get()->getRowArray();
             $noAntrean = ((int) ($maxAntrean['maks'] ?? 0)) + 1;
+            // v7: kedua kode dihasilkan DALAM transaksi yang sama dengan
+            // booking (jadwal sudah di-FOR UPDATE di atas, jadi tidak ada
+            // nomor ganda). Huruf poli diambil dari jadwal -> dokter -> poli.
+            $poliRow = $db->table('jadwal_dokter j')
+                ->select('p.kode_antrean, p.nama_poli')
+                ->join('dokter d', 'd.id_dokter = j.id_dokter')
+                ->join('poli p', 'p.id_poli = d.id_poli')
+                ->where('j.id_jadwal', (int) $input['id_jadwal'])
+                ->get()->getRowArray();
+            $huruf       = KodeAntrean::hurufPoli($poliRow ?: []);
+            $kodeAntrean = KodeAntrean::format($noAntrean, $huruf);
+            $kodeBooking = KodeAntrean::bookingUnik();
             $model = new PendaftaranModel();
             $model->insert([
                 'id_pasien'       => $idPasien,
                 'id_jadwal'       => (int) $input['id_jadwal'],
                 'jenis_kunjungan' => $input['jenis_kunjungan'],
                 'no_antrean'      => $noAntrean,
+                'kode_antrean'    => $kodeAntrean,
+                'kode_booking'    => $kodeBooking,
                 'no_rujukan'      => $input['no_rujukan'] ?: null,
                 'faskes_perujuk'  => $input['faskes_perujuk'] ?: null,
                 'keluhan_awal'    => $input['keluhan_awal'],
@@ -208,7 +230,7 @@ class Pendaftaran extends BaseController
             ]);
             $idPendaftaran = (int) $model->getInsertID();
             $db->transCommit();
-            return ['ok' => true, 'id_pendaftaran' => $idPendaftaran, 'no_antrean' => $noAntrean];
+            return ['ok' => true, 'id_pendaftaran' => $idPendaftaran, 'no_antrean' => $noAntrean, 'kode_antrean' => $kodeAntrean, 'kode_booking' => $kodeBooking];
         } catch (\Throwable $e) {
             $db->transRollback();
             log_message('error', 'Simpan pendaftaran gagal: ' . $e->getMessage());

@@ -15,7 +15,21 @@ class CreateRekamMedis extends Migration
             'id_pendaftaran' => ['type' => 'INT', 'constraint' => 10, 'unsigned' => true],
             'id_dokter' => ['type' => 'INT', 'constraint' => 10, 'unsigned' => true],
             'tanggal_periksa' => ['type' => 'DATE'],
+            // v7: formulir SOAP — S (keluhan + alergi), O (TTV numerik +
+            // pemeriksaan fisik), A (diagnosis + kode ICD-10), P (tindakan
+            // + resep terstruktur + rencana tindak lanjut).
+            'keluhan' => ['type' => 'TEXT', 'null' => true],
+            'alergi' => ['type' => 'VARCHAR', 'constraint' => 255, 'null' => true],
+            'ttv_sistolik' => ['type' => 'INT', 'null' => true],
+            'ttv_diastolik' => ['type' => 'INT', 'null' => true],
+            'ttv_nadi' => ['type' => 'INT', 'null' => true],
+            'ttv_napas' => ['type' => 'INT', 'null' => true],
+            'ttv_suhu' => ['type' => 'DECIMAL', 'constraint' => '4,1', 'null' => true],
+            'ttv_spo2' => ['type' => 'INT', 'null' => true],
+            'pemeriksaan_fisik' => ['type' => 'TEXT', 'null' => true],
+            'kode_diagnosis' => ['type' => 'VARCHAR', 'constraint' => 20, 'null' => true],
             'diagnosis' => ['type' => 'TEXT'],
+            'rencana' => ['type' => 'TEXT', 'null' => true],
             'tindakan' => ['type' => 'TEXT', 'null' => true],
             'resep' => ['type' => 'TEXT', 'null' => true],
             'catatan' => ['type' => 'TEXT', 'null' => true],

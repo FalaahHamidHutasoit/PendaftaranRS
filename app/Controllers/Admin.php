@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\KodeAntrean;
 use App\Models\DokterModel;
 use App\Models\JadwalDokterModel;
 use App\Models\PasienModel;
@@ -49,6 +50,11 @@ class Admin extends BaseController
         if (! $this->validate(['nama_poli' => 'required|max_length[100]'])) {
             return redirect()->back()->withInput()->with('error', 'Nama poli wajib diisi.');
         }
+        // v7: huruf kode antrean wajib 1 huruf A-Z dan unik antar poli.
+        $huruf = strtoupper(trim((string) $this->request->getPost('kode_antrean')));
+        if (! preg_match('/^[A-Z]$/', $huruf)) {
+            return redirect()->back()->withInput()->with('error', 'Kode antrean poli wajib 1 huruf A-Z (mis. U untuk Poli Umum).');
+        }
         $model = new PoliModel();
         $id = (int) $this->request->getPost('id_poli');
         if ($id && ! $model->find($id)) {
@@ -58,7 +64,11 @@ class Admin extends BaseController
         if ($ada && (int) $ada['id_poli'] !== $id) {
             return redirect()->back()->withInput()->with('error', 'Nama poli sudah digunakan.');
         }
-        $data = ['nama_poli' => $this->request->getPost('nama_poli'), 'deskripsi' => $this->request->getPost('deskripsi') ?: null];
+        $hurufAda = $model->where('kode_antrean', $huruf)->first();
+        if ($hurufAda && (int) $hurufAda['id_poli'] !== $id) {
+            return redirect()->back()->withInput()->with('error', 'Huruf kode antrean ' . $huruf . ' sudah dipakai poli lain.');
+        }
+        $data = ['nama_poli' => $this->request->getPost('nama_poli'), 'deskripsi' => $this->request->getPost('deskripsi') ?: null, 'kode_antrean' => $huruf];
         $id ? $model->update($id, $data) : $model->insert($data);
         return redirect()->to('/admin/poli')->with('success', 'Data poli berhasil disimpan.');
     }
@@ -273,13 +283,86 @@ class Admin extends BaseController
     {
         $db = Database::connect();
         $rows = $db->table('pendaftaran pd')
-            ->select('pd.*, ps.no_rm, u.nama AS nama_pasien, j.tanggal, d.nama_dokter')
+            ->select('pd.*, ps.no_rm, u.nama AS nama_pasien, j.tanggal, d.nama_dokter, p.nama_poli, p.kode_antrean AS kode_antrean_poli')
             ->join('pasien ps', 'ps.id_pasien = pd.id_pasien')
             ->join('users u', 'u.id_user = ps.id_user')
             ->join('jadwal_dokter j', 'j.id_jadwal = pd.id_jadwal')
             ->join('dokter d', 'd.id_dokter = j.id_dokter')
+            ->join('poli p', 'p.id_poli = d.id_poli')
             ->orderBy('pd.tanggal_daftar', 'DESC')->get()->getResultArray();
+        $rows = KodeAntrean::pastikanDaftar($rows);
         return view('admin/pendaftaran', ['pendaftaran' => $rows]);
+    }
+
+    /**
+     * v7: Pindai/cari kode booking untuk check-in. Halaman ini TIDAK
+     * meminta kamera saat dimuat — kamera hanya diminta saat tombol
+     * "Pindai QR" ditekan (di view). Bila kamera tidak tersedia atau
+     * izin ditolak, form ketik kode tetap jalan, dan pemindai USB
+     * (yang berperilaku seperti keyboard + Enter) langsung mengisi
+     * kolom yang sama. Pencarian memakai logika check-in yang sama
+     * persis dengan checkIn() — tidak ada jalur pintas.
+     * GET ?kode=... dipakai supaya hasil pindai kamera (yang mengisi
+     * kolom lalu submit) dan scanner USB memakai jalur yang sama.
+     */
+    public function pindai()
+    {
+        $kode = strtoupper(trim((string) $this->request->getGet('kode')));
+        $hasil = null;
+        $pesan = null;
+        if ($kode !== '') {
+            $db  = Database::connect();
+            $row = $db->table('pendaftaran pd')
+                ->select('pd.*, ps.no_rm, u.nama AS nama_pasien, j.tanggal, j.jam_mulai, j.jam_selesai, d.nama_dokter, p.nama_poli, p.kode_antrean AS kode_antrean_poli')
+                ->join('pasien ps', 'ps.id_pasien = pd.id_pasien')
+                ->join('users u', 'u.id_user = ps.id_user')
+                ->join('jadwal_dokter j', 'j.id_jadwal = pd.id_jadwal')
+                ->join('dokter d', 'd.id_dokter = j.id_dokter')
+                ->join('poli p', 'p.id_poli = d.id_poli')
+                ->where('pd.kode_booking', $kode)
+                ->get()->getRowArray();
+            if (! $row) {
+                $pesan = 'Kode booking tidak ditemukan. Periksa kembali kode yang diketik/dipindai, atau cari di Data Pendaftaran berdasarkan nama pasien + tanggal + kode antrean.';
+            } else {
+                $row   = KodeAntrean::pastikanKode($row);
+                $hasil = $row;
+                if ($row['status'] === 'dikonfirmasi') {
+                    $pesan = $row['waktu_checkin']
+                        ? 'Pendaftaran ini sudah check-in pada ' . date('d M Y', strtotime($row['waktu_checkin'])) . ' pukul ' . date('H:i', strtotime($row['waktu_checkin'])) . '. Tidak perlu check-in lagi.'
+                        : 'Pendaftaran ini sudah check-in (waktu check-in tidak tercatat untuk data lama). Tidak perlu check-in lagi.';
+                } elseif ($row['status'] !== 'menunggu') {
+                    $pesan = 'Pendaftaran ini berstatus ' . $row['status'] . ' sehingga tidak dapat di-check-in dari sini.';
+                } else {
+                    $jadwal = (new JadwalDokterModel())->find((int) $row['id_jadwal']);
+                    if (! $jadwal || $jadwal['tanggal'] !== date('Y-m-d')) {
+                        $pesan = 'Booking ini untuk tanggal ' . ($jadwal['tanggal'] ?? '-') . ', bukan hari ini. Check-in hanya dapat dilakukan pada hari praktik (tanggal jadwal hari ini).';
+                    }
+                }
+            }
+        }
+        return view('admin/pindai', ['kode' => $kode, 'hasil' => $hasil, 'pesan' => $pesan]);
+    }
+
+    /** Check-in dari halaman pindai; penjaga sama persis dengan checkIn(). */
+    public function pindaiCheckIn(int $id)
+    {
+        $model = new PendaftaranModel();
+        $row   = $model->find($id);
+        if (! $row) {
+            return redirect()->to('/admin/pendaftaran/pindai')->with('error', 'Pendaftaran tidak ditemukan.');
+        }
+        if ($row['status'] !== 'menunggu') {
+            return redirect()->to('/admin/pendaftaran/pindai?kode=' . urlencode((string) ($row['kode_booking'] ?? '')))
+                ->with('error', 'Check-in hanya dapat dilakukan untuk pendaftaran berstatus menunggu.');
+        }
+        $jadwal = (new JadwalDokterModel())->find((int) $row['id_jadwal']);
+        if (! $jadwal || $jadwal['tanggal'] !== date('Y-m-d')) {
+            return redirect()->to('/admin/pendaftaran/pindai?kode=' . urlencode((string) ($row['kode_booking'] ?? '')))
+                ->with('error', 'Check-in hanya dapat dilakukan pada hari praktik (tanggal jadwal hari ini).');
+        }
+        $model->update($id, ['status' => 'dikonfirmasi', 'waktu_checkin' => date('Y-m-d H:i:s')]);
+        return redirect()->to('/admin/pendaftaran/pindai?kode=' . urlencode((string) ($row['kode_booking'] ?? '')))
+            ->with('success', 'Check-in berhasil. Kode antrean ' . KodeAntrean::tampil($row) . ' kini dikonfirmasi.');
     }
 
     public function ubahStatusPendaftaran(int $id)
@@ -336,9 +419,9 @@ class Admin extends BaseController
             return redirect()->to('/admin/pendaftaran')
                 ->with('error', 'Check-in hanya dapat dilakukan pada hari praktik (tanggal jadwal hari ini).');
         }
-        $model->update($id, ['status' => 'dikonfirmasi']);
+        $model->update($id, ['status' => 'dikonfirmasi', 'waktu_checkin' => date('Y-m-d H:i:s')]);
         return redirect()->to('/admin/pendaftaran')
-            ->with('success', 'Check-in berhasil. Pendaftaran antrean ' . $row['no_antrean'] . ' kini dikonfirmasi.');
+            ->with('success', 'Check-in berhasil. Kode antrean ' . KodeAntrean::tampil($row) . ' kini dikonfirmasi.');
     }
 
     // ---------- Rekap ----------

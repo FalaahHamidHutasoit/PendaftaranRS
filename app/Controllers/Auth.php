@@ -52,7 +52,7 @@ class Auth extends BaseController
         return match ($role) {
             'admin'  => '/admin',
             'dokter' => '/dokter',
-            default  => '/jadwal',
+            default  => '/beranda',
         };
     }
 }
