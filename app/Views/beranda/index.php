@@ -4,41 +4,44 @@
 <div class="page-heading"><div><h1>Selamat datang, <?= esc($nama ?: 'Pasien') ?></h1><p>Ini halaman utama Anda — antrean aktif dan jalan pintas ke semua fitur ada di sini.</p></div><div class="page-icon"><i class="bi bi-house-door"></i></div></div>
 <?php if (! empty($antrean_aktif ?? [])): ?>
 <p class="text-muted small fw-bold text-uppercase mb-2">Antrean Saya</p>
-<?php foreach ($antrean_aktif as $a): ?><div class="hero-antrean p-4 mb-3">
-<div class="d-flex flex-column flex-md-row gap-3 align-items-start">
+<?php $bulanId = [1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember']; ?>
+<?php foreach ($antrean_aktif as $a): ?><?php $tsJadwal = strtotime($a['tanggal'] ?? ''); $tglId = $tsJadwal ? date('d', $tsJadwal) . ' ' . $bulanId[(int) date('n', $tsJadwal)] . ' ' . date('Y', $tsJadwal) : ($a['tanggal'] ?? ''); $jamId = substr((string) ($a['jam_mulai'] ?? ''), 0, 5) . '–' . substr((string) ($a['jam_selesai'] ?? ''), 0, 5); ?><div class="hero-antrean p-4 mb-3">
+<div class="d-flex flex-row gap-3 align-items-center">
 <div class="flex-grow-1 min-w-0">
-<p class="small mb-1 opacity-75">Kode antrean Anda yang masih aktif</p>
+<p class="mb-2"><span class="badge hero-badge"><?= esc($a['status'] === 'dikonfirmasi' ? 'Dikonfirmasi · Sudah check-in' : 'Menunggu') ?></span></p>
 <span class="hero-num"><?= esc($a['kode_antrean'] ?? ('No. ' . $a['no_antrean'])) ?></span>
-<p class="mb-1 mt-2"><strong><?= esc($a['nama_dokter']) ?></strong> (<?= esc($a['spesialisasi']) ?>) &mdash; <?= esc($a['nama_poli']) ?></p>
-<p class="mb-2"><?= esc($a['tanggal']) ?> pukul <?= esc($a['jam_mulai']) ?> - <?= esc($a['jam_selesai']) ?></p>
-<p class="mb-3"><span class="badge hero-badge"><?= esc($a['status'] === 'dikonfirmasi' ? 'Dikonfirmasi · Sudah check-in' : 'Menunggu') ?></span> &nbsp; <span class="small"><?= esc($a['jenis_kunjungan']) ?></span></p>
-<?php if ($a['status'] === 'dikonfirmasi'): ?>
-<p class="small mb-3">Langkah selanjutnya: Anda sudah check-in. Datang sesuai jadwal dan tunggu dipanggil sesuai kode antrean ini.</p>
-<?php else: ?>
-<p class="small mb-3">Langkah selanjutnya: datang pada tanggal tersebut dan lakukan check-in di loket. Tunjukkan QR atau kode booking di samping ini saat check-in.</p>
-<?php endif; ?>
+<p class="mb-0 mt-2"><?= esc($a['nama_poli']) ?> &middot; <?= esc($tglId) ?> &middot; <?= esc($jamId) ?></p>
 </div>
-<div class="bg-white rounded p-2 text-center flex-shrink-0" style="border-radius:14px">
-<div id="qr-<?= esc($a['id_pendaftaran']) ?>"></div>
-<p class="mb-0 mt-2 small fw-bold" style="color:#0b63d8">Kode Booking<br><?= esc($a['kode_booking'] ?? '-') ?></p>
-<p class="mb-0 small text-muted">Tunjukkan ke admisi saat check-in</p>
-</div>
+<button type="button" class="btn btn-light flex-shrink-0 d-flex flex-column align-items-center px-3 py-2" data-bs-toggle="modal" data-bs-target="#qrModal-<?= esc($a['id_pendaftaran']) ?>" aria-label="Tampilkan QR check-in" title="Tampilkan QR check-in"><i class="bi bi-qr-code-scan fs-3"></i><span class="small">QR</span></button>
 </div>
 <p class="mb-0 mt-3"><a class="btn btn-light w-100" href="/pendaftaran">Lihat Detail di Antrean Saya</a></p>
+</div>
+<div class="modal fade" id="qrModal-<?= esc($a['id_pendaftaran']) ?>" tabindex="-1" aria-labelledby="qrModalLabel-<?= esc($a['id_pendaftaran']) ?>" aria-hidden="true">
+<div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content text-dark">
+<div class="modal-header"><h5 class="modal-title" id="qrModalLabel-<?= esc($a['id_pendaftaran']) ?>">QR Check-in</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button></div>
+<div class="modal-body text-center">
+<div id="qr-modal-<?= esc($a['id_pendaftaran']) ?>" class="d-flex justify-content-center"></div>
+<p class="mb-0 mt-3 fw-bold">Kode Booking<br><span style="font-size:1.25rem"><?= esc($a['kode_booking'] ?? '-') ?></span></p>
+<p class="mb-0 small text-muted">Tunjukkan QR ini ke admisi saat check-in. Bila QR tidak terbaca, sebutkan kode booking di atas.</p>
+</div>
+<div class="modal-footer"><button type="button" class="btn btn-secondary w-100" data-bs-dismiss="modal">Tutup</button></div>
+</div></div>
 </div><?php endforeach; ?>
 <?php if (! empty($antrean_aktif)): ?>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-// v7: QR hanya berisi teks kode booking saja — tanpa NIK, nama,
-// diagnosis, atau URL. Bila library gagal dimuat, kode booking teks
-// di bawah QR tetap tampil sehingga check-in manual tetap bisa.
+// QR hero v9: di hero hanya ikon QR; QR besar hanya ada di dalam
+// modal yang dibuka lewat ikon itu. Isi QR tetap teks kode booking
+// saja — tanpa NIK, nama, diagnosis, atau URL. Bila library gagal
+// dimuat, kode booking teks di dalam modal tetap tampil sehingga
+// check-in manual tetap bisa.
 (function () {
   if (typeof QRCode === 'undefined') { return; }
   <?php foreach ($antrean_aktif as $a): ?>
   <?php if (! empty($a['kode_booking'])): ?>
-  new QRCode(document.getElementById('qr-<?= esc($a['id_pendaftaran']) ?>'), {
+  new QRCode(document.getElementById('qr-modal-<?= esc($a['id_pendaftaran']) ?>'), {
     text: <?= json_encode($a['kode_booking']) ?>,
-    width: 128, height: 128, correctLevel: QRCode.CorrectLevel.H
+    width: 200, height: 200, correctLevel: QRCode.CorrectLevel.H
   });
   <?php endif; ?>
   <?php endforeach; ?>

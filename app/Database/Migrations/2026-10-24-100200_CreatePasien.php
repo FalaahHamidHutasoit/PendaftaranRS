@@ -30,6 +30,10 @@ class CreatePasien extends Migration
         $this->forge->addUniqueKey('id_user');
         $this->forge->addUniqueKey('no_rm');
         $this->forge->addUniqueKey('nik');
+        // v8 (P1.10): nomor BPJS unik di database, bukan hanya cek
+        // aplikasi. Kolom NULL (pasien umum) tetap boleh banyak di
+        // MySQL — UNIQUE hanya melarang dua nomor BPJS yang sama.
+        $this->forge->addUniqueKey('no_bpjs');
         $this->forge->addForeignKey('id_user', 'users', 'id_user', 'CASCADE', 'CASCADE');
         $this->forge->createTable('pasien');
     }

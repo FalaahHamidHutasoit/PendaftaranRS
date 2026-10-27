@@ -8,4 +8,10 @@
 </form>
 <p class="mb-0">Belum punya akun pasien? <a href="/registrasi">Registrasi di sini</a>, lalu login dan pilih jadwal.</p>
 </div>
+<div class="surface-card p-4 mb-3">
+<p class="mb-2"><strong>Akun demo (instalasi lokal)</strong></p>
+<p class="mb-1">Admisi: admin@demo.local / admin123</p>
+<p class="mb-1">Pasien: pasien@demo.local / pasien123</p>
+<p class="mb-0">Dokter: dokter@demo.local / dokter123</p>
+</div>
 <?= $this->include('partials/footer') ?>

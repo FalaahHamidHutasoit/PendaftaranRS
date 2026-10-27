@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\AuditTrail;
 use App\Libraries\KodeAntrean;
 use App\Models\DokterModel;
 use App\Models\JadwalDokterModel;
@@ -275,6 +276,8 @@ class Admin extends BaseController
             'status_bpjs'  => $status,
             'catatan_bpjs' => $this->request->getPost('catatan_bpjs') ?: null,
         ]);
+        // v8: audit verifikasi BPJS (best-effort; nomor BPJS TIDAK ditulis).
+        AuditTrail::catat((int) session()->get('id_user'), 'verifikasi_bpjs', null, 'Admisi memverifikasi BPJS pasien id ' . $id . ' menjadi status ' . $status . '.');
         return redirect()->to('/admin/pasien')->with('success', 'Status BPJS berhasil diperbarui.');
     }
 
@@ -361,6 +364,8 @@ class Admin extends BaseController
                 ->with('error', 'Check-in hanya dapat dilakukan pada hari praktik (tanggal jadwal hari ini).');
         }
         $model->update($id, ['status' => 'dikonfirmasi', 'waktu_checkin' => date('Y-m-d H:i:s')]);
+        // v8: audit check-in lewat pindai (best-effort).
+        AuditTrail::catat((int) session()->get('id_user'), 'checkin', $id, 'Admisi melakukan check-in pendaftaran id ' . $id . '.');
         return redirect()->to('/admin/pendaftaran/pindai?kode=' . urlencode((string) ($row['kode_booking'] ?? '')))
             ->with('success', 'Check-in berhasil. Kode antrean ' . KodeAntrean::tampil($row) . ' kini dikonfirmasi.');
     }
@@ -391,6 +396,8 @@ class Admin extends BaseController
                 ->with('error', 'Transisi status dari ' . $row['status'] . ' ke ' . $status . ' tidak diizinkan.');
         }
         $model->update($id, ['status' => $status]);
+        // v8: audit ubah status manual (best-effort).
+        AuditTrail::catat((int) session()->get('id_user'), 'ubah_status', $id, 'Admisi mengubah status pendaftaran id ' . $id . ' menjadi ' . $status . '.');
         return redirect()->to('/admin/pendaftaran')->with('success', 'Status pendaftaran berhasil diubah.');
     }
 
@@ -420,6 +427,8 @@ class Admin extends BaseController
                 ->with('error', 'Check-in hanya dapat dilakukan pada hari praktik (tanggal jadwal hari ini).');
         }
         $model->update($id, ['status' => 'dikonfirmasi', 'waktu_checkin' => date('Y-m-d H:i:s')]);
+        // v8: audit check-in (best-effort).
+        AuditTrail::catat((int) session()->get('id_user'), 'checkin', $id, 'Admisi melakukan check-in pendaftaran id ' . $id . '.');
         return redirect()->to('/admin/pendaftaran')
             ->with('success', 'Check-in berhasil. Kode antrean ' . KodeAntrean::tampil($row) . ' kini dikonfirmasi.');
     }

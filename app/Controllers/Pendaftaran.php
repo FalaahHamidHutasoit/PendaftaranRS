@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\AuditTrail;
 use App\Libraries\KodeAntrean;
 use App\Models\JadwalDokterModel;
 use App\Models\PasienModel;
@@ -89,6 +90,8 @@ class Pendaftaran extends BaseController
         if (! $hasil['ok']) {
             return redirect()->back()->withInput()->with('error', $hasil['error']);
         }
+        // v8: audit booking (best-effort).
+        AuditTrail::catat((int) session()->get('id_user'), 'booking', (int) $hasil['id_pendaftaran'], 'Pasien membuat pendaftaran id ' . $hasil['id_pendaftaran'] . '.');
         return redirect()->to('/pendaftaran')
             ->with('success', 'Pendaftaran berhasil. Kode antrean Anda: ' . $hasil['kode_antrean'] . '. Kode booking Anda: ' . $hasil['kode_booking'] . ' — tunjukkan kode ini (atau QR-nya di Beranda) saat check-in.');
     }
@@ -115,6 +118,8 @@ class Pendaftaran extends BaseController
             return $this->response->setJSON(['ok' => false, 'error' => $hasil['error']])
                 ->setStatusCode($hasil['code'] ?? 422);
         }
+        // v8: audit booking lewat API (aksi sama dengan form web).
+        AuditTrail::catat((int) session()->get('id_user'), 'booking', (int) $hasil['id_pendaftaran'], 'Pasien membuat pendaftaran id ' . $hasil['id_pendaftaran'] . '.');
         return $this->response->setJSON([
             'ok'              => true,
             'id_pendaftaran'  => $hasil['id_pendaftaran'],
@@ -145,6 +150,8 @@ class Pendaftaran extends BaseController
                 ->with('error', 'Pembatalan hanya dapat dilakukan sebelum hari praktik.');
         }
         $model->update($idPendaftaran, ['status' => 'dibatalkan']);
+        // v8: audit pembatalan (best-effort).
+        AuditTrail::catat((int) session()->get('id_user'), 'batal', $idPendaftaran, 'Pasien membatalkan pendaftaran id ' . $idPendaftaran . '.');
         return redirect()->to('/pendaftaran')->with('success', 'Pendaftaran berhasil dibatalkan. Kuota kembali tersedia.');
     }
 

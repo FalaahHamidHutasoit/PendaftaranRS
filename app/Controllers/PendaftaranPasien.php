@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\AuditTrail;
 use App\Models\PasienModel;
 use App\Models\UserModel;
 use Config\Database;
@@ -50,6 +51,8 @@ class PendaftaranPasien extends BaseController
             return redirect()->back()->withInput()->with('error', 'Nomor BPJS sudah terdaftar.');
         }
         $db = Database::connect();
+        $idUser   = 0;
+        $idPasien = 0;
         $db->transBegin();
         try {
             $userModel->insert([
@@ -59,15 +62,18 @@ class PendaftaranPasien extends BaseController
                 'role'     => 'pasien',
             ]);
             $idUser = (int) $userModel->getInsertID();
-            $today  = date('Y-m-d');
-            $countToday = $pasienModel
-                ->where('created_at >=', $today . ' 00:00:00')
-                ->where('created_at <', date('Y-m-d', strtotime('+1 day')) . ' 00:00:00')
-                ->countAllResults();
-            $noRm = 'RM' . date('Ymd') . str_pad((string) ($countToday + 1), 4, '0', STR_PAD_LEFT);
+            // v8 (P1.9): no_rm TIDAK LAGI dari COUNT pasien hari itu + 1.
+            // Dua registrasi bersamaan bisa menghitung nomor yang sama,
+            // sehingga salah satunya gagal walau datanya valid. Cara baru
+            // (dalam transaksi yang sama): pasien dibuat dulu dengan
+            // no_rm sementara yang unik per user, lalu no_rm final
+            // diturunkan dari id_pasien (unik, jadi tidak bisa bentrok).
+            // Makna format berubah: bukan lagi "urutan hari itu",
+            // melainkan RM + tanggal + id_pasien (mis. RM202610260001
+            // untuk id_pasien 1 pada 26 Okt 2026).
             $pasienModel->insert([
                 'id_user'       => $idUser,
-                'no_rm'         => $noRm,
+                'no_rm'         => 'RM-TMP-' . $idUser,
                 'nik'           => $nik,
                 'tanggal_lahir' => $this->request->getPost('tanggal_lahir'),
                 'jenis_kelamin' => $this->request->getPost('jenis_kelamin'),
@@ -79,12 +85,24 @@ class PendaftaranPasien extends BaseController
                 'golongan_darah' => $this->request->getPost('golongan_darah') ?: 'tidak_tahu',
                 'alergi'        => $this->request->getPost('alergi') ?: null,
             ]);
+            $idPasien = (int) $pasienModel->getInsertID();
+            $pasienModel->update($idPasien, [
+                // STR_PAD_LEFT wajib: str_pad tanpa arah mengisi nol di
+                // KANAN ('2' -> '2000'), sehingga id_pasien 2 dan 20
+                // akan bentrok di UNIQUE no_rm. Nol di kiri ('0002')
+                // menjamin keunikan turunan id_pasien.
+                'no_rm' => 'RM' . date('Ymd') . str_pad((string) $idPasien, 4, '0', STR_PAD_LEFT),
+            ]);
             $db->transCommit();
         } catch (\Throwable $e) {
             $db->transRollback();
             log_message('error', 'Registrasi pasien gagal: ' . $e->getMessage());
             return redirect()->back()->withInput()
                 ->with('error', 'Pendaftaran gagal disimpan. Silakan coba lagi.');
+        }
+        // v8: audit registrasi (best-effort, tidak menggagalkan registrasi).
+        if ($idPasien > 0) {
+            AuditTrail::catat($idUser, 'registrasi', null, 'Pasien mendaftar akun baru id ' . $idPasien . '.');
         }
         return redirect()->to('/login')
             ->with('success', 'Akun berhasil dibuat. Silakan login.');

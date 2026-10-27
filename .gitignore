@@ -1,0 +1,54 @@
+# .gitignore untuk proyek CodeIgniter 4 ini.
+# Letakkan file ini di ROOT proyek (sejajar dengan folder app/,
+# public/, dan writable/). File ini HANYA mencegah file runtime
+# masuk ke commit BERIKUTNYA — file yang sudah terlanjur terlacak
+# (mis. .env, log, dump debugbar) TIDAK hilang hanya karena ada
+# di daftar ini. Menghapusnya dari pelacakan adalah tugas pemilik
+# repo, lihat CATATAN_PENERAPAN.txt di paket ini.
+
+# Konfigurasi lokal — JANGAN PERNAH di-commit.
+.env
+.env.*
+!.env.example
+
+# Data runtime CodeIgniter — JANGAN PERNAH di-commit.
+# Isi session bisa memuat keadaan login; isi log dan debugbar
+# bisa memuat informasi diagnostik. Ketiganya tidak boleh ada
+# di repo, apalagi repo publik.
+writable/cache/*
+writable/debugbar/*
+writable/logs/*
+writable/session/*
+writable/uploads/*
+
+# Penanda folder writable TETAP dilacak (ini yang membuat folder
+# writable tetap ada setelah clone, tanpa membawa isi runtime).
+!writable/.htaccess
+!writable/cache/.htaccess
+!writable/cache/index.html
+!writable/debugbar/.htaccess
+!writable/debugbar/index.html
+!writable/logs/.htaccess
+!writable/logs/index.html
+!writable/session/.htaccess
+!writable/session/index.html
+!writable/uploads/.htaccess
+!writable/uploads/index.html
+!writable/index.html
+
+# Dependensi dan build lokal (dibuat ulang oleh composer install,
+# bukan bagian dari repo).
+/vendor/
+/builds/
+/node_modules/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Cadangan lokal
+*.sql.bak
+*.backup
+!.env.development.example

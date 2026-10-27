@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\AuditTrail;
 use App\Models\UserModel;
 
 class Auth extends BaseController
@@ -26,6 +27,10 @@ class Auth extends BaseController
         }
         $user = (new UserModel())->where('email', $this->request->getPost('email'))->first();
         if (! $user || ! password_verify((string) $this->request->getPost('password'), (string) $user['password'])) {
+            // v8: audit login gagal (best-effort). id_user diisi bila
+            // akunnya ditemukan, null bila tidak. Keterangan sengaja
+            // generik — email TIDAK ditulis ke audit.
+            AuditTrail::catat($user ? (int) $user['id_user'] : null, 'login_gagal', null, 'Percobaan login gagal.');
             return redirect()->back()->withInput()
                 ->with('error', 'Email atau kata sandi salah.');
         }
@@ -37,6 +42,8 @@ class Auth extends BaseController
             'role'       => $user['role'],
             'isLoggedIn' => true,
         ]);
+        // v8: audit login sukses (best-effort).
+        AuditTrail::catat((int) $user['id_user'], 'login', null, 'Pengguna berhasil login (id ' . $user['id_user'] . ').');
         return redirect()->to($this->dashboardFor((string) $user['role']))
             ->with('success', 'Selamat datang, ' . $user['nama'] . '.');
     }
